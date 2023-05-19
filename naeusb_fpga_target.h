@@ -30,6 +30,8 @@
 
 #define REQ_XMEGA_PROGRAM 0x20
 
+#define REQ_N76E003_ICP_PROGRAM 0x40
+
 void fpga_target_register_handlers(void);
 
 void main_vendor_bulk_in_received(udd_ep_status_t status,
