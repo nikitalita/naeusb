@@ -29,59 +29,75 @@
 #include <stdio.h>
 #include "NuvoICP.h"
 #include "NuvoICP_CW.h"
+#include "delay.h"
 
-int pgm_init(void);
-void pgm_set_dat(int val);
-int pgm_get_dat(void);
-void pgm_set_rst(int val);
-void pgm_set_clk(int val);
-void pgm_dat_dir(int state);
-void pgm_deinit(void);
-void pgm_usleep(unsigned long);
-void device_print(const char* msg);
+// These are MCU dependent (default for N76E003)
+static int program_time = 20;
+static int page_erase_time = 5000;
 
-#define CMD_READ_UID		0x04
-#define CMD_READ_CID		0x0b
-#define CMD_READ_DEVICE_ID	0x0c
-#define CMD_READ_FLASH		0x00
-#define CMD_WRITE_FLASH		0x21
-#define CMD_MASS_ERASE		0x26
-#define CMD_PAGE_ERASE		0x22
+#ifdef DYNAMIC_DELAY
+static int ICP_CMD_DELAY = DEFAULT_BIT_DELAY;
+static int ICP_READ_DELAY = DEFAULT_BIT_DELAY;
+static int ICP_WRITE_DELAY = DEFAULT_BIT_DELAY;
+#else
+#define ICP_CMD_DELAY DEFAULT_BIT_DELAY
+#define ICP_READ_DELAY DEFAULT_BIT_DELAY
+#define ICP_WRITE_DELAY DEFAULT_BIT_DELAY
+#endif
 
-#define ENTRY_BITS    0x5aa503
-#define ICP_RESET_SEQ 0x9e1cb6
-// Alternative Reset sequence earlier nulink firmware revisions used
-#define ALT_RESET_SEQ 0xAE1CB6
-#define EXIT_BITS     0xF78F0
+// to avoid overhead from calling usleep() for 0 us
+#define USLEEP(x) if (x > 0) pgm_usleep(x)
+
+#ifdef _DEBUG
+#define DEBUG_PRINT(x) icp_outputf(x)
+// time measurement
+static unsigned long usstart_time = 0;
+static unsigned long usend_time = 0;
+#define DEBUG_TIMER_START usstart_time = pgm_get_time();
+#define DEBUG_TIMER_END usend_time = pgm_get_time();
+#define DEBUG_PRINT_TIME(funcname) icp_outputf(#funcname " took %d us\n", usend_time - usstart_time)
+#else
+#define DEBUG_PRINT(x)
+#define TIMER_START
+#define DEBUG_TIMER_END
+#define DEBUG_PRINT_TIME(funcname)
+#endif
+#define ENTRY_BIT_DELAY 60
+
 
 
 static void icp_bitsend(uint32_t data, int len, uint32_t udelay)
 {
-	/* configure DAT pin as output */
 	pgm_dat_dir(1);
 	int i = len;
-
-	while (i--) {
-		pgm_set_dat((data >> i) & 1);
-		pgm_usleep(udelay);
-		pgm_set_clk(1);
-		pgm_usleep(udelay);
-		pgm_set_clk(0);
-	}
+	while (i--){
+			pgm_set_dat((data >> i) & 1);
+			USLEEP(udelay);
+			pgm_set_clk(1);
+			USLEEP(udelay);
+			pgm_set_clk(0);
+	}	
 }
-
 
 static void icp_send_command(uint8_t cmd, uint32_t dat)
 {
-	icp_bitsend((dat << 6) | cmd, 24, CMD_DELAY);
+	icp_bitsend((dat << 6) | cmd, 24, ICP_CMD_DELAY);
 }
 
-int reset_seq(uint32_t reset_seq, int len){
+int send_reset_seq(uint32_t reset_seq, int len){
 	for (int i = 0; i < len + 1; i++) {
 		pgm_set_rst((reset_seq >> (len - i)) & 1);
-		pgm_usleep(10000);
+		USLEEP(10000);
 	}
 	return 0;
+}
+
+void icp_send_entry_bits() {
+	icp_bitsend(ENTRY_BITS, 24, ENTRY_BIT_DELAY);
+}
+
+void icp_send_exit_bits(){
+	icp_bitsend(EXIT_BITS, 24, ENTRY_BIT_DELAY);
 }
 
 int icp_init(uint8_t do_reset)
@@ -89,83 +105,145 @@ int icp_init(uint8_t do_reset)
 	int rc;
 
 	rc = pgm_init();
-    if (rc < 0) 
+    if (rc < 0) {
 		return rc;
-	if (do_reset) {
-		reset_seq(ALT_RESET_SEQ, 24);
-	} else {
-		pgm_set_rst(1);
-		pgm_usleep(5000);
-		pgm_set_rst(0);
-		pgm_usleep(1000);
+	} else if (rc != 0){
+		return -1;
 	}
-	
-	pgm_usleep(100);
-	icp_bitsend(ENTRY_BITS, 24, 60);
-
+	icp_entry(do_reset);
+	uint32_t dev_id = icp_read_device_id();
+	if (dev_id >> 8 == 0x2F){
+		printf("Device ID mismatch: %x\n", dev_id);
+		return -1;
+	}
 	return 0;
 }
 
-void icp_reentry(uint32_t delay1, uint32_t delay2) {
-	pgm_usleep(10);
-	pgm_set_rst(1);
-	pgm_usleep(delay1);
+void icp_entry(uint8_t do_reset) {
+	if (do_reset) {
+		send_reset_seq(ICP_RESET_SEQ, 24);
+	} else {
+		pgm_set_rst(1);
+		USLEEP(5000);
+		pgm_set_rst(0);
+		USLEEP(1000);
+	}
+	
+	USLEEP(100);
+	icp_send_entry_bits();
+	USLEEP(10);
+}
+
+void icp_reentry(uint32_t delay1, uint32_t delay2, uint32_t delay3) {
+	USLEEP(10);
+	if (delay1 > 0) {
+		pgm_set_rst(1);
+		USLEEP(delay1);
+	}
 	pgm_set_rst(0);
-	pgm_usleep(delay2);
-	icp_bitsend(ENTRY_BITS, 24, 60);
-	pgm_usleep(10);
+	USLEEP(delay2);
+	icp_send_entry_bits();
+	USLEEP(delay3);
+}
+
+void icp_fullexit_entry_glitch(uint32_t delay1, uint32_t delay2, uint32_t delay3){
+	icp_exit();
+}
+
+void icp_reentry_glitch(uint32_t delay1, uint32_t delay2, uint32_t delay_after_trigger_high, uint32_t delay_before_trigger_low){
+	USLEEP(200);
+	// this bit here it to ensure that the config bytes are read at the correct time (right next to the reset high)
+	pgm_set_rst(1);
+	USLEEP(delay1);
+	pgm_set_rst(0);
+	USLEEP(delay2);
+
+	//now we do a the full reentry, set the trigger
+	pgm_set_trigger(1);
+	USLEEP(delay_after_trigger_high);
+	pgm_set_rst(1);
+
+	// by default, we sleep for 280us, the length of the config load
+	if (delay_before_trigger_low == 0) {
+		delay_before_trigger_low = 280;
+	}
+
+	if (delay_before_trigger_low > delay1){
+		USLEEP(delay1);
+		pgm_set_rst(0);
+		USLEEP(delay_before_trigger_low - delay1);
+		pgm_set_trigger(0);
+	} else {
+		USLEEP(delay_before_trigger_low);
+		pgm_set_trigger(0);
+		USLEEP(delay1 - delay_before_trigger_low);
+		pgm_set_rst(0);
+	}
+	USLEEP(delay2);
+	icp_send_entry_bits();
+	USLEEP(10);
+}
+
+void icp_reentry_glitch_read(uint32_t delay1, uint32_t delay2, uint32_t delay_after_trigger_high, uint32_t delay_before_trigger_low, uint8_t * config_bytes) {
+	icp_reentry_glitch(delay1, delay2, delay_after_trigger_high, delay_before_trigger_low);
+	icp_read_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, config_bytes);
+}
+
+void icp_deinit(void)
+{
+	icp_exit();
+	pgm_deinit(1);
 }
 
 void icp_exit(void)
 {
 	pgm_set_rst(1);
-	pgm_usleep(5000);
+	USLEEP(5000);
 	pgm_set_rst(0);
-	pgm_usleep(10000);
-	icp_bitsend(EXIT_BITS, 24, 60);
-	pgm_usleep(500);
+	USLEEP(10000);
+	icp_send_exit_bits();
+	USLEEP(500);
 	pgm_set_rst(1);
-	pgm_deinit();
 }
 
-#define READ_BYTE_SLEEP 1
 
 static uint8_t icp_read_byte(int end)
 {
 	pgm_dat_dir(0);
-	pgm_usleep(READ_DELAY);
+	USLEEP(ICP_READ_DELAY);
 	uint8_t data = 0;
 	int i = 8;
 
 	while (i--) {
-		pgm_usleep(READ_DELAY);
+		USLEEP(ICP_READ_DELAY);
 		int state = pgm_get_dat();
 		pgm_set_clk(1);
-		pgm_usleep(READ_DELAY);
+		USLEEP(ICP_READ_DELAY);
 		pgm_set_clk(0);
 		data |= (state << i);
 	}
 
 	pgm_dat_dir(1);
-	pgm_usleep(READ_DELAY);
+	USLEEP(ICP_READ_DELAY);
 	pgm_set_dat(end);
-	pgm_usleep(READ_DELAY);
+	USLEEP(ICP_READ_DELAY);
 	pgm_set_clk(1);
-	pgm_usleep(READ_DELAY);
+	USLEEP(ICP_READ_DELAY);
 	pgm_set_clk(0);
-	pgm_usleep(READ_DELAY);
+	USLEEP(ICP_READ_DELAY);
 	pgm_set_dat(0);
 
 	return data;
 }
 
-static void icp_write_byte(uint8_t data, int end, int delay1, int delay2)
+static void icp_write_byte(uint8_t data, uint8_t end, uint32_t delay1, uint32_t delay2)
 {
-	icp_bitsend(data, 8, 0);
+	icp_bitsend(data, 8, ICP_WRITE_DELAY);
+
 	pgm_set_dat(end);
-	pgm_usleep(delay1);
+	USLEEP(delay1);
 	pgm_set_clk(1);
-	pgm_usleep(delay2);
+	USLEEP(delay2);
 	pgm_set_dat(0);
 	pgm_set_clk(0);
 }
@@ -195,67 +273,82 @@ uint8_t icp_read_cid(void)
 	return icp_read_byte(1);
 }
 
-uint32_t icp_read_uid(void)
+void icp_read_uid(uint8_t * buf)
 {
-	uint8_t uid[3];
-
-	for (int i = 0; i < sizeof(uid); i++) {
+	for (uint8_t  i = 0; i < 12; i++) {
 		icp_send_command(CMD_READ_UID, i);
-		uid[i] = icp_read_byte(1);
+		buf[i] = icp_read_byte(1);
 	}
-
-	return (uid[2] << 16) | (uid[1] << 8) | uid[0];
 }
 
-uint32_t icp_read_ucid(void)
+void icp_read_ucid(uint8_t * buf)
 {
-	uint8_t ucid[4];
-
-	for (int i = 0; i < sizeof(ucid); i++) {
+	for (uint8_t i = 0; i < 16; i++) {
 		icp_send_command(CMD_READ_UID, i + 0x20);
-		ucid[i] = icp_read_byte(1);
+		buf[i] = icp_read_byte(1);
 	}
-
-	return (ucid[3] << 24) | (ucid[2] << 16) | (ucid[1] << 8) | ucid[0];
 }
 
 uint32_t icp_read_flash(uint32_t addr, uint32_t len, uint8_t *data)
 {
 	icp_send_command(CMD_READ_FLASH, addr);
 
-	for (int i = 0; i < len; i++)
+	for (uint32_t i = 0; i < len; i++){
 		data[i] = icp_read_byte(i == (len-1));
-
+	}
 	return addr + len;
 }
 
 uint32_t icp_write_flash(uint32_t addr, uint32_t len, uint8_t *data)
 {
 	icp_send_command(CMD_WRITE_FLASH, addr);
-
-	for (int i = 0; i < len; i++)
-		icp_write_byte(data[i], i == (len-1), 200, 50);
+	int delay1 = program_time;
+	for (uint32_t i = 0; i < len; i++) {
+		icp_write_byte(data[i], i == (len-1), delay1, 5);
+	}
+		
 	return addr + len;
 }
 
 void icp_mass_erase(void)
 {
 	icp_send_command(CMD_MASS_ERASE, 0x3A5A5);
-	icp_write_byte(0xff, 1, 100000, 10000);
+	icp_write_byte(0xff, 1, 50000, 500);
 }
 
 void icp_page_erase(uint32_t addr)
 {
 	icp_send_command(CMD_PAGE_ERASE, addr);
-	icp_write_byte(0xff, 1, 10000, 1000);
+	icp_write_byte(0xff, 1, page_erase_time, 100);
 }
 
-void outputf(const char *s, ...)
+void icp_outputf(const char *s, ...)
 {
   char buf[160];
   va_list ap;
   va_start(ap, s);
   vsnprintf(buf, 160, s, ap);
   va_end(ap);
-  device_print(buf);
+  pgm_print(buf);
+}
+
+#ifdef DYNAMIC_DELAY
+void icp_set_cmd_bit_delay(int delay_us) {
+	ICP_CMD_DELAY = delay_us;
+}
+void icp_set_read_bit_delay(int delay_us) {
+	ICP_READ_DELAY = delay_us;
+}
+void icp_set_write_bit_delay(int delay_us) {
+	ICP_WRITE_DELAY = delay_us;
+}
+#endif
+int icp_get_cmd_bit_delay() {
+	return ICP_CMD_DELAY;
+}
+int icp_get_read_bit_delay() {
+	return ICP_READ_DELAY;
+}
+int icp_get_write_bit_delay() {
+	return ICP_WRITE_DELAY;
 }
