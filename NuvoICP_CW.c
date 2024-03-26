@@ -43,7 +43,7 @@ void pgm_set_dat(uint8_t val)
 
 uint8_t pgm_get_dat(void)
 {
-  return gpio_get_pin_value(PIN_PDIDRX_GPIO);
+  return gpio_pin_is_high(PIN_PDIDRX_GPIO) ? 1 : 0;
 }
 
 void pgm_set_rst(uint8_t val)

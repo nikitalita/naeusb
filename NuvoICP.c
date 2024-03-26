@@ -114,7 +114,7 @@ int icp_init(uint8_t do_reset)
 	icp_entry(do_reset);
 	uint32_t dev_id = icp_read_device_id();
 	if (dev_id >> 8 == 0x2F){
-		printf("Device ID mismatch: %x\n", dev_id);
+		// printf("Device ID mismatch: %x\n", dev_id);
 		return -1;
 	}
 	return 0;
@@ -193,7 +193,7 @@ void icp_reentry_glitch_read(uint32_t delay1, uint32_t delay2, uint32_t delay_af
 void icp_deinit(void)
 {
 	icp_exit();
-	pgm_deinit(1);
+	pgm_deinit(0);
 }
 
 void icp_exit(void)

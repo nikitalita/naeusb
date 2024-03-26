@@ -59,6 +59,10 @@
 #define NUVO_APMODE 1
 #define NUVO_LDMODE 2
 
+// page size
+#define NUVO_PAGE_SIZE 128
+#define NUVO_PAGE_MASK 0xFF80
+
 // packet constants
 #define NUVO_PKT_CMD_START 0
 #define NUVO_PKT_CMD_SIZE 4

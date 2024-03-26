@@ -4,6 +4,7 @@
 #include "NuvoProgCommon.h"
 #include "NuvoICP.h"
 #include <stdint.h>
+#include <string.h>
 
 #define XMEGA_BUF_SIZE 256
 
@@ -25,7 +26,7 @@ bool NuvoICP_Protocol_Command(void)
     break;
 
   case NUVO_CMD_UPDATE_CONFIG:
-    NuvoICP_WriteMemory(xprog_rambuf);
+    NuvoICP_UpdateConfig();
     break;
 
   case NUVO_CMD_READ_CONFIG:
@@ -33,7 +34,7 @@ bool NuvoICP_Protocol_Command(void)
     break;
 
   case NUVO_CMD_PAGE_ERASE:
-    NuvoICP_Page_Erase();
+    NuvoICP_Page_Erase(xprog_rambuf);
     break;
 
   case NUVO_CMD_MASS_ERASE:
@@ -137,16 +138,30 @@ void NuvoICP_EnterXPROGMode(void)
     N51_Status = NUVO_ERR_OK;
   }
 }
+
 void NuvoICP_LeaveXPROGMode(void)
 {
   icp_deinit();
   N51_Status = NUVO_ERR_OK;
 }
+
 void NuvoICP_Mass_Erase(void)
 {
   icp_mass_erase();
   N51_Status = NUVO_ERR_OK;
 }
+
+void NuvoICP_UpdateConfig(void) {
+  N51_Status = NUVO_ERR_OK;
+
+  if (udd_g_ctrlreq.req.wLength < 2 + CFG_FLASH_LEN)
+  {
+    N51_Status = NUVO_ERR_FAILED;
+  }
+  icp_write_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, &udd_g_ctrlreq.payload[2]);
+  N51_Status = NUVO_ERR_OK;
+}
+
 void NuvoICP_WriteMemory(uint8_t *buf)
 {
   N51_Status = NUVO_ERR_OK;
@@ -166,6 +181,22 @@ void NuvoICP_WriteMemory(uint8_t *buf)
 
   icp_write_flash(Address, Length, buf);
   N51_Status = NUVO_ERR_OK;
+}
+
+void NuvoICP_Page_Erase(uint8_t * xprog_rambuf){
+  N51_Status = NUVO_ERR_OK;
+
+  if (udd_g_ctrlreq.req.wLength < 8)
+  {
+    N51_Status = NUVO_ERR_FAILED;
+  }
+  
+  uint32_t Address = NUVO_PAGE_MASK & ((udd_g_ctrlreq.payload[5] << 24) | (udd_g_ctrlreq.payload[4] << 16) | (udd_g_ctrlreq.payload[3] << 8) | (udd_g_ctrlreq.payload[2]));
+  uint16_t Length = udd_g_ctrlreq.payload[6] | (udd_g_ctrlreq.payload[7] << 8);
+  for (uint16_t i = 0; i < Length; i+= NUVO_PAGE_SIZE)
+  {
+    icp_page_erase(Address + i);
+  }
 }
 
 void NuvoICP_GetParam(uint8_t cmd, uint8_t *buf)
