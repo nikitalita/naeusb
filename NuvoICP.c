@@ -29,7 +29,8 @@
 #include <stdio.h>
 #include "NuvoICP.h"
 #include "NuvoICP_CW.h"
-#include "delay.h"
+
+#define DEFAULT_BIT_DELAY 2
 
 // These are MCU dependent (default for N76E003)
 static int program_time = 20;

@@ -10,24 +10,28 @@
 #define NUVO_CMD_RUN_APROM 0xab
 #define NUVO_CMD_CONNECT 0xae
 #define NUVO_CMD_GET_DEVICEID 0xb1
-#define NUVO_CMD_RESET 0xad         // not implemented in default N76E003 ISP rom
-#define NUVO_CMD_GET_FLASHMODE 0xCA // not implemented in default N76E003 ISP rom
-#define NUVO_CMD_RUN_LDROM 0xac     // not implemented in default N76E003 ISP rom
+#define NUVO_CMD_RESET 0xad        
+#define NUVO_CMD_GET_FLASHMODE 0xCA
+#define NUVO_CMD_RUN_LDROM 0xac    
+#define NUVO_CMD_RESEND_PACKET 0xFF
+#define NUVO_CMD_READ_ROM 0xa5
+#define NUVO_CMD_GET_UID 0xb2
+#define NUVO_CMD_GET_CID 0xb3
+#define NUVO_CMD_GET_UCID 0xb4
+#define NUVO_CMD_GET_BANDGAP 0xb5
+#define NUVO_CMD_PAGE_ERASE 0xD5
 
-// Not implemented yet
-#define NUVO_CMD_RESEND_PACKET 0xFF // not implemented in default N76E003 ISP rom
+#define NUVO_CMD_UPDATE_WHOLE_ROM 0xE1 
+#define NUVO_CMD_MASS_ERASE 0xD6
 
-// Extended commands
-#define NUVO_CMD_READ_ROM 0xa5       // non-official
-#define NUVO_CMD_GET_UID 0xb2        // non-official
-#define NUVO_CMD_GET_CID 0xb3        // non-official
-#define NUVO_CMD_GET_UCID 0xb4       // non-official
-#define NUVO_CMD_GET_BANDGAP 0xb5    // non-official
-#define NUVO_CMD_ISP_PAGE_ERASE 0xD5 // non-official
+// ChipWhisperer specific
+#define NUVO_GET_RAMBUF 0xe4
+#define NUVO_SET_RAMBUF 0xe5
+#define NUVO_GET_STATUS 0xe6
 
-// Arduino ISP-to-ICP bridge only
-#define NUVO_CMD_UPDATE_WHOLE_ROM 0xE1 // non-official
-#define NUVO_CMD_ISP_MASS_ERASE 0xD6   // non-official
+#define NUVO_REENTER_ICP 0xe7
+#define NUVO_REENTRY_GLITCH 0xe8
+#define NUVO_REENTRY_GLITCH_READ 0xe9
 
 // ** Unsupported by N76E003 **
 // Dataflash commands (when a chip has the ability to deliniate between data and program flash)
@@ -45,10 +49,6 @@
 #define NUVO_CMD_WRITE_CHECKSUM 0xC9
 #define NUVO_CMD_SET_INTERFACE 0xBA
 
-// ChipWhisperer specific
-#define NUVO_GET_RAMBUF 0xe4
-#define NUVO_SET_RAMBUF 0xe5
-#define NUVO_GET_STATUS 0xe6
 
 #define NUVO_ERR_OK 0
 #define NUVO_ERR_FAILED 1

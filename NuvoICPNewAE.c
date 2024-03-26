@@ -32,12 +32,12 @@ bool NuvoICP_Protocol_Command(void)
     NuvoICP_ReadMemory(xprog_rambuf);
     break;
 
-  case NUVO_CMD_ERASE_ALL:
-    NuvoICP_Mass_Erase();
+  case NUVO_CMD_PAGE_ERASE:
+    NuvoICP_Page_Erase();
     break;
 
-  case NUVO_CMD_SYNC_PACKNO:
-    NuvoICP_SetParam();
+  case NUVO_CMD_MASS_ERASE:
+    NuvoICP_Mass_Erase();
     break;
 
   case NUVO_CMD_READ_ROM:
@@ -45,7 +45,7 @@ bool NuvoICP_Protocol_Command(void)
     break;
 
   case NUVO_CMD_GET_FWVER:
-    NuvoICP_ReadMemory(xprog_rambuf);
+    NuvoICP_GetParam(NUVO_CMD_GET_FWVER, xprog_rambuf);
     break;
 
   case NUVO_CMD_RUN_APROM:
@@ -57,19 +57,19 @@ bool NuvoICP_Protocol_Command(void)
     break;
 
   case NUVO_CMD_GET_DEVICEID:
-    NuvoICP_ReadMemory(xprog_rambuf);
+    NuvoICP_GetParam(NUVO_CMD_GET_DEVICEID, xprog_rambuf);
     break;
 
   case NUVO_CMD_GET_UID:
-    NuvoICP_ReadMemory(xprog_rambuf);
+    NuvoICP_GetParam(NUVO_CMD_GET_UID, xprog_rambuf);
     break;
 
   case NUVO_CMD_GET_CID:
-    NuvoICP_ReadMemory(xprog_rambuf);
+    NuvoICP_GetParam(NUVO_CMD_GET_CID, xprog_rambuf);
     break;
 
   case NUVO_CMD_GET_UCID:
-    NuvoICP_ReadMemory(xprog_rambuf);
+    NuvoICP_GetParam(NUVO_CMD_GET_UCID, xprog_rambuf);
     break;
   case NUVO_GET_RAMBUF:
     offset = (udd_g_ctrlreq.req.wValue >> 8) & 0xff;
@@ -105,6 +105,19 @@ bool NuvoICP_Protocol_Command(void)
     udd_g_ctrlreq.payload_size = 3;
     return true;
     break;
+  
+  case NUVO_REENTER_ICP:
+    icp_reentry(5000, 1000, 10);
+    break;
+
+  case NUVO_REENTRY_GLITCH:
+    icp_reentry_glitch(5000, 1000, 0, 280);
+    break;
+  
+  case NUVO_REENTRY_GLITCH_READ:
+    icp_reentry_glitch_read(5000, 1000, 0, 280, xprog_rambuf);
+    break;
+
 
   default:
     break;
@@ -126,8 +139,7 @@ void NuvoICP_EnterXPROGMode(void)
 }
 void NuvoICP_LeaveXPROGMode(void)
 {
-  icp_exit();
-
+  icp_deinit();
   N51_Status = NUVO_ERR_OK;
 }
 void NuvoICP_Mass_Erase(void)
