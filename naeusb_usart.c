@@ -575,7 +575,7 @@ static void ctrl_usart_cb_data(void)
     }
 }
 
-#ifdef CW_PROG_N76E003_ICP
+#ifdef CW_PROG_NU51_ICP
 void ctrl_n76e003_icp_program_void(void) {
     NuvoICP_Protocol_Command();
 }
@@ -736,8 +736,8 @@ bool usart_setup_out_received(void)
         return true;
 #endif
 
-#ifdef CW_PROG_N76E003_ICP
-    case REQ_N76E003_ICP_PROGRAM:
+#ifdef CW_PROG_NU51_ICP
+    case REQ_NU51_ICP_PROGRAM:
         udd_g_ctrlreq.callback = ctrl_n76e003_icp_program_void;
         return true;
 #endif
@@ -798,8 +798,8 @@ bool usart_setup_in_received(void)
         break;
 #endif
 
-#ifdef CW_PROG_N76E003_ICP
-    case REQ_N76E003_ICP_PROGRAM:
+#ifdef CW_PROG_NU51_ICP
+    case REQ_NU51_ICP_PROGRAM:
         return NuvoICP_Protocol_Command();
         break;
 #endif

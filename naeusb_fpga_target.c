@@ -195,7 +195,7 @@ static void ctrl_progfpgaspi(void){
 			break;
 	}
 }
-#ifdef CW_PROG_N76E003_ICP
+#ifdef CW_PROG_NU51_ICP
 void ctrl_n76e003_icp_program_void(void) {
         return NuvoICP_Protocol_Command();
 }
@@ -503,8 +503,8 @@ bool fpga_target_setup_in_received(void)
             return true;
             break;
 
-#ifdef CW_PROG_N76E003_ICP
-        case REQ_N76E003_ICP_PROGRAM:
+#ifdef CW_PROG_NU51_ICP
+        case REQ_NU51_ICP_PROGRAM:
             return NuvoICP_Protocol_Command();
             break;
 #endif
@@ -647,8 +647,8 @@ bool fpga_target_setup_out_received(void)
             udd_g_ctrlreq.callback = ctrl_progfpga_bulk;
             return true;
 
-#ifdef CW_PROG_N76E003_ICP
-        case REQ_N76E003_ICP_PROGRAM:
+#ifdef CW_PROG_NU51_ICP
+        case REQ_NU51_ICP_PROGRAM:
             udd_g_ctrlreq.callback = ctrl_n76e003_icp_program_void;
             return true;
 #endif

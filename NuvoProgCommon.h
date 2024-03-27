@@ -29,9 +29,11 @@
 #define NUVO_SET_RAMBUF 0xe5
 #define NUVO_GET_STATUS 0xe6
 
-#define NUVO_REENTER_ICP 0xe7
-#define NUVO_REENTRY_GLITCH 0xe8
-#define NUVO_REENTRY_GLITCH_READ 0xe9
+#define NUVO_ENTER_ICP_MODE 0xe7
+#define NUVO_EXIT_ICP_MODE 0xe8
+#define NUVO_REENTER_ICP 0xe9
+#define NUVO_REENTRY_GLITCH 0xea
+#define NUVO_REENTRY_GLITCH_READ 0xeb
 
 // ** Unsupported by N76E003 **
 // Dataflash commands (when a chip has the ability to deliniate between data and program flash)
@@ -60,10 +62,10 @@
 #define NUVO_LDMODE 2
 
 // page size
-#define NUVO_PAGE_SIZE 128
-#define NUVO_PAGE_MASK 0xFF80
+#define NU51_PAGE_SIZE 128
+#define NU51_PAGE_MASK 0xFF80
 
-// packet constants
+// ISP packet constants
 #define NUVO_PKT_CMD_START 0
 #define NUVO_PKT_CMD_SIZE 4
 #define NUVO_PKT_SEQ_START 4
