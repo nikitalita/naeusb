@@ -7,9 +7,28 @@
 #include <string.h>
 
 #define NUVOICP_BUF_SIZE 256
+#define STATUS_DATA_START 3
+// Request payload params start at this index
+#define PDATA_START 0
 
 /* Status of last executed command */
 uint8_t N51_Status;
+
+uint32_t unpack_u32(uint8_t *buf, uint32_t offset)
+{
+  return (buf[offset + 3] << 24) | (buf[offset + 2] << 16) | (buf[offset + 1] << 8) | buf[offset];
+}
+
+bool _check_param_len(uint8_t len)
+{
+  if (udd_g_ctrlreq.req.wLength < len + PDATA_START)
+  {
+    N51_Status = NUVO_ERR_INCORRECT_PARAMS;
+    return false;
+  }
+  N51_Status = NUVO_ERR_OK;
+  return true;
+}
 
 
 bool NuvoICP_Protocol_Command(void)
@@ -18,62 +37,60 @@ bool NuvoICP_Protocol_Command(void)
   status_payload[0] = udd_g_ctrlreq.req.wValue & 0xff;
   static uint16_t nuvoicp_status_payload_size = 0;
 
-  static uint8_t xprog_rambuf[NUVOICP_BUF_SIZE];
+  static uint8_t NuvoICP_rambuf[NUVOICP_BUF_SIZE];
   uint8_t offset;
 
   switch (status_payload[0])
   {
-  case NUVO_CMD_UPDATE_APROM:
-    NuvoICP_WriteMemory(xprog_rambuf);
+#ifdef _DEBUG
+  case NUVO_TEST_CMD:
+    N51_Status = NUVO_ERR_OK;
+    test_command();
     break;
-
-  case NUVO_CMD_UPDATE_CONFIG:
-    NuvoICP_UpdateConfig();
-    break;
-
-  case NUVO_CMD_READ_CONFIG:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_READ_CONFIG, &status_payload[2]);
+#endif
+  case NUVO_CMD_WRITE_FLASH:
+    NuvoICP_WriteMemory(NuvoICP_rambuf, &status_payload[STATUS_DATA_START]);
+    nuvoicp_status_payload_size = 2;
     break;
 
   case NUVO_CMD_PAGE_ERASE:
-    NuvoICP_Page_Erase(xprog_rambuf);
+    NuvoICP_Page_Erase(NuvoICP_rambuf);
     break;
 
   case NUVO_CMD_MASS_ERASE:
     NuvoICP_Mass_Erase();
     break;
 
-  case NUVO_CMD_READ_ROM:
-    NuvoICP_ReadMemory(xprog_rambuf);
+  case NUVO_CMD_READ_FLASH:
+    NuvoICP_ReadMemory(NuvoICP_rambuf);
     break;
 
-  case NUVO_CMD_GET_FWVER:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_FWVER, &status_payload[2]);
-    break;
-
-  case NUVO_CMD_RUN_APROM:
   case NUVO_CMD_RESET:
-    NuvoICP_LeaveXPROGMode();
+    NuvoICP_LeaveProgMode();
+    break;
+
+  case NUVO_CMD_DEINIT_PGM_ONLY:
+    NuvoICP_DeinitPinsOnly();
     break;
 
   case NUVO_CMD_CONNECT:
-    NuvoICP_EnterXPROGMode();
+    NuvoICP_EnterProgMode();
     break;
 
   case NUVO_CMD_GET_DEVICEID:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_DEVICEID, &status_payload[2]);
+    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_DEVICEID, &status_payload[STATUS_DATA_START]);
     break;
 
   case NUVO_CMD_GET_UID:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_UID,  &status_payload[2]);
+    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_UID,  &status_payload[STATUS_DATA_START]);
     break;
 
   case NUVO_CMD_GET_CID:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_CID, &status_payload[2]);
+    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_CID, &status_payload[STATUS_DATA_START]);
     break;
 
   case NUVO_CMD_GET_UCID:
-    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_UCID, &status_payload[2]);
+    nuvoicp_status_payload_size = NuvoICP_GetParam(NUVO_CMD_GET_UCID, &status_payload[STATUS_DATA_START]);
     break;
   case NUVO_GET_RAMBUF:
     offset = (udd_g_ctrlreq.req.wValue >> 8) & 0xff;
@@ -83,51 +100,56 @@ bool NuvoICP_Protocol_Command(void)
       return false;
     }
 
-    udd_g_ctrlreq.payload = xprog_rambuf + offset;
+    udd_g_ctrlreq.payload = NuvoICP_rambuf + offset;
     udd_g_ctrlreq.payload_size = udd_g_ctrlreq.req.wLength;
     return true;
     break;
 
   // Write data to intername RAM buffer
   case NUVO_SET_RAMBUF:
+    N51_Status = NUVO_ERR_OK;
     offset = (udd_g_ctrlreq.req.wValue >> 8) & 0xff;
     if ((offset + udd_g_ctrlreq.req.wLength) > NUVOICP_BUF_SIZE)
     {
       // nice try!
+      N51_Status = NUVO_ERR_INCORRECT_PARAMS;
       return false;
     }
 
-    memcpy(xprog_rambuf + offset, udd_g_ctrlreq.payload,
+    memcpy(NuvoICP_rambuf + offset, udd_g_ctrlreq.payload,
            udd_g_ctrlreq.req.wLength);
     return true;
     break;
 
   case NUVO_GET_STATUS:
     status_payload[1] = N51_Status;
+    status_payload[2] = 0;
     udd_g_ctrlreq.payload = status_payload;
-    udd_g_ctrlreq.payload_size = nuvoicp_status_payload_size + 2;
+    udd_g_ctrlreq.payload_size = nuvoicp_status_payload_size + STATUS_DATA_START;
     nuvoicp_status_payload_size = 0;
     return true;
     break;
 
-  case NUVO_ENTER_ICP_MODE:
-    icp_entry(true);
-    break;
+  case NUVO_CMD_ENTER_ICP_MODE:
+  {
+    if (!_check_param_len(1)) {
+      return false;
+    }
+    icp_entry(udd_g_ctrlreq.payload[PDATA_START]);
+  } break;
 
-  case NUVO_EXIT_ICP_MODE:
+  case NUVO_CMD_EXIT_ICP_MODE:
+    N51_Status = NUVO_ERR_OK;
     icp_exit();
     break;
   
-  case NUVO_REENTER_ICP:
-    icp_reentry(5000, 1000, 10);
+  case NUVO_CMD_REENTER_ICP:
+    NuvoICP_Reentry();
     break;
 
-  case NUVO_REENTRY_GLITCH:
-    icp_reentry_glitch(5000, 1000, 0, 280);
-    break;
-  
-  case NUVO_REENTRY_GLITCH_READ:
-    icp_reentry_glitch_read(5000, 1000, 0, 280, xprog_rambuf);
+  case NUVO_CMD_REENTRY_GLITCH:
+    N51_Status = NUVO_ERR_OK;
+    NuvoICP_Reentry_glitch();
     break;
 
 
@@ -138,19 +160,54 @@ bool NuvoICP_Protocol_Command(void)
   return false;
 }
 
-void NuvoICP_EnterXPROGMode(void)
-{
-  if (!icp_init(true))
-  {
-    N51_Status = NUVO_ERR_FAILED;
+
+void NuvoICP_DeinitPinsOnly(void){
+  if (!_check_param_len(1)){
+    return;
   }
-  else
+  icp_pgm_deinit_only(udd_g_ctrlreq.payload[PDATA_START]);
+}
+
+void NuvoICP_Reentry(void)
+{
+  if (!_check_param_len(12)){
+    return;
+  }
+  uint32_t delay1 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START);
+  uint32_t delay2 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 4);
+  uint32_t delay3 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 8);
+  icp_reentry(delay1, delay2, delay3);
+}
+
+void NuvoICP_Reentry_glitch(void)
+{
+  if (!_check_param_len(16)){
+    return;
+  }
+  uint32_t delay1 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START);
+  uint32_t delay2 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 4);
+  uint32_t delay3 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 8);
+  uint32_t delay4 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 12);
+
+  icp_reentry_glitch(delay1, delay2, delay3, delay4);
+}
+
+void NuvoICP_EnterProgMode(void)
+{
+  uint8_t res = icp_init(true);
+  if (res < 0) // negative error codes
+  {
+    N51_Status = res * -1;
+  }
+  else if (res == 0)
   {
     N51_Status = NUVO_ERR_OK;
+  } else {
+    N51_Status = res;
   }
 }
 
-void NuvoICP_LeaveXPROGMode(void)
+void NuvoICP_LeaveProgMode(void)
 {
   icp_deinit();
   N51_Status = NUVO_ERR_OK;
@@ -162,42 +219,53 @@ void NuvoICP_Mass_Erase(void)
   N51_Status = NUVO_ERR_OK;
 }
 
-void NuvoICP_UpdateConfig(void) {
-  N51_Status = NUVO_ERR_OK;
-
-  if (udd_g_ctrlreq.req.wLength < 2 + CFG_FLASH_LEN)
-  {
-    N51_Status = NUVO_ERR_FAILED;
-  }
-  icp_write_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, &udd_g_ctrlreq.payload[2]);
-  N51_Status = NUVO_ERR_OK;
-}
-
-void NuvoICP_WriteMemory(uint8_t *buf)
+// expects an 32-bit address and a 16-bit length
+bool NuvoICP_WriteMemory(uint8_t *buf, uint8_t *status_buf_data)
 {
-  N51_Status = NUVO_ERR_OK;
-
-  if (udd_g_ctrlreq.req.wLength < 8)
-  {
-    N51_Status = NUVO_ERR_FAILED;
+  status_buf_data[0] = 0;
+  status_buf_data[1] = 0;
+  if (!_check_param_len(6)){
+    return false;
   }
 
-  uint32_t Address = (udd_g_ctrlreq.payload[5] << 24) | (udd_g_ctrlreq.payload[4] << 16) | (udd_g_ctrlreq.payload[3] << 8) | (udd_g_ctrlreq.payload[2]);
-  uint16_t Length = udd_g_ctrlreq.payload[6] | (udd_g_ctrlreq.payload[7] << 8);
+  uint32_t Address = (udd_g_ctrlreq.payload[PDATA_START+3] << 24) |
+                      (udd_g_ctrlreq.payload[PDATA_START+2] << 16) |
+                      (udd_g_ctrlreq.payload[PDATA_START+1] << 8) |
+                      (udd_g_ctrlreq.payload[PDATA_START]);
+  uint16_t Length = udd_g_ctrlreq.payload[PDATA_START+4] |
+                    (udd_g_ctrlreq.payload[PDATA_START+5] << 8);
 
   if (Length > NUVOICP_BUF_SIZE)
   {
     Length = NUVOICP_BUF_SIZE;
   }
+  uint16_t checksum = 0;
+  uint32_t addr_written = icp_write_flash(Address, Length, buf);
+  for (uint16_t i = 0; i < Length; i++)
+  {
+    checksum += buf[i];
+  }
+  // pack them into the status_buf_data
+  status_buf_data[0] = checksum & 0xff;
+  status_buf_data[1] = (checksum >> 8) & 0xff;
+  if (addr_written != Address + Length){
+    N51_Status = NUVO_ERR_WRITE_FAILED;
+    return false;
+  }
 
-  icp_write_flash(Address, Length, buf);
   N51_Status = NUVO_ERR_OK;
+  return true;
 }
 
-void NuvoICP_Page_Erase(uint8_t * xprog_rambuf){
-  N51_Status = NUVO_ERR_OK;
-
-  uint32_t Address = NU51_PAGE_MASK & ((udd_g_ctrlreq.payload[5] << 24) | (udd_g_ctrlreq.payload[4] << 16) | (udd_g_ctrlreq.payload[3] << 8) | (udd_g_ctrlreq.payload[2]));
+// expects a 32-bit address
+void NuvoICP_Page_Erase(uint8_t * NuvoICP_rambuf){
+  if (!_check_param_len(4)){
+    return;
+  }
+  uint32_t Address = (udd_g_ctrlreq.payload[PDATA_START+3] << 24) | 
+                      (udd_g_ctrlreq.payload[PDATA_START+2] << 16) | 
+                      (udd_g_ctrlreq.payload[PDATA_START+1] << 8) | 
+                      (udd_g_ctrlreq.payload[PDATA_START]);
   icp_page_erase(Address);
 }
 
@@ -232,32 +300,6 @@ uint16_t NuvoICP_GetParam(uint8_t cmd, uint8_t *buf)
       icp_read_ucid(buf);
       val_length = 16;
       break;
-    case NUVO_CMD_GET_FWVER:
-      value = 0xD0;
-      in_val = true;
-      break;
-    case NUVO_CMD_GET_FLASHMODE:
-      icp_read_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, buf);
-      if (buf[0] & 0x80)
-      {
-        value = NUVO_APMODE;
-      }
-      else
-      {
-        value = NUVO_LDMODE;
-      }
-      for (uint8_t i = 0; i < 5; i++)
-      {
-        buf[i] = 0;
-      }
-      buf[0] = value;
-      val_length = 1;
-      
-      break;
-    case NUVO_CMD_READ_CONFIG:
-      icp_read_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, buf);
-      val_length = CFG_FLASH_LEN;
-      break;
   }
   if (in_val)
   {
@@ -274,16 +316,24 @@ uint16_t NuvoICP_GetParam(uint8_t cmd, uint8_t *buf)
 
 void NuvoICP_ReadMemory(uint8_t *buf)
 {
-  N51_Status = NUVO_ERR_OK;
-  // uint8_t MemoryType = udd_g_ctrlreq.payload[0]; //Not used
-  uint32_t Address = (udd_g_ctrlreq.payload[4] << 24) | (udd_g_ctrlreq.payload[3] << 16) | (udd_g_ctrlreq.payload[2] << 8) | (udd_g_ctrlreq.payload[1]);
-  uint16_t Length = udd_g_ctrlreq.payload[5] | (udd_g_ctrlreq.payload[6] << 8);
-
+  if (!_check_param_len(6)){
+    return;
+  }
+  uint32_t Address = (udd_g_ctrlreq.payload[PDATA_START+3] << 24) |
+                      (udd_g_ctrlreq.payload[PDATA_START+2] << 16) |
+                      (udd_g_ctrlreq.payload[PDATA_START+1] << 8) |
+                      (udd_g_ctrlreq.payload[PDATA_START]);
+  uint16_t Length = udd_g_ctrlreq.payload[PDATA_START+4] |
+                    (udd_g_ctrlreq.payload[PDATA_START+5] << 8);
   if (Length > NUVOICP_BUF_SIZE)
   {
     Length = NUVOICP_BUF_SIZE;
   }
 
-  icp_read_flash(Address, Length, buf);
+  uint32_t addr_read = icp_read_flash(Address, Length, buf);
+  if (addr_read != Address + Length){
+    N51_Status = NUVO_ERR_READ_FAILED;
+    return;
+  }
   N51_Status = NUVO_ERR_OK;
 }

@@ -29,8 +29,10 @@
 #include <stdio.h>
 #include "NuvoICP.h"
 #include "NuvoICP_CW.h"
+#include "NuvoProgCommon.h"
 
 #define DEFAULT_BIT_DELAY 2
+#define LEAVE_RESET_HIGH_AFTER_PROG 0
 
 // These are MCU dependent (default for N76E003)
 static int program_time = 20;
@@ -65,7 +67,34 @@ static unsigned long usend_time = 0;
 #endif
 #define ENTRY_BIT_DELAY 60
 
+// ICP Commands
+#define CMD_READ_UID		0x04
+#define CMD_READ_CID		0x0b
+#define CMD_READ_DEVICE_ID	0x0c
+#define CMD_READ_FLASH		0x00
+#define CMD_WRITE_FLASH		0x21
+#define CMD_MASS_ERASE		0x26
+#define CMD_PAGE_ERASE		0x22
 
+#ifdef _DEBUG
+#include "delay.h"
+#include "gpio.h"
+
+void test_command(){
+	pgm_init();
+	pgm_dat_dir(1);
+	for (int i = 0; i < 50; i++){
+		pgm_set_rst(1);
+		pgm_set_dat(1);
+		pgm_set_clk(1);
+		delay_ms(100);
+		pgm_set_rst(0);
+		pgm_set_dat(0);
+		pgm_set_clk(0);
+		delay_ms(100);
+	}
+}
+#endif
 
 static void icp_bitsend(uint32_t data, int len, uint32_t udelay)
 {
@@ -112,11 +141,11 @@ int icp_init(uint8_t do_reset)
 		return -1;
 	}
 	icp_entry(do_reset);
-	uint32_t dev_id = icp_read_device_id();
-	if (dev_id >> 8 == 0x2F){
-		// printf("Device ID mismatch: %x\n", dev_id);
-		return -1;
-	}
+	// uint32_t dev_id = icp_read_device_id();
+	// if (dev_id >> 8 == 0x2F){
+	// 	// printf("Device ID mismatch: %x\n", dev_id);
+	// 	return -2;
+	// }
 	return 0;
 }
 
@@ -129,7 +158,7 @@ void icp_entry(uint8_t do_reset) {
 		pgm_set_rst(0);
 		USLEEP(1000);
 	}
-	
+	pgm_set_rst(0);
 	USLEEP(100);
 	icp_send_entry_bits();
 	USLEEP(10);
@@ -185,15 +214,15 @@ void icp_reentry_glitch(uint32_t delay1, uint32_t delay2, uint32_t delay_after_t
 	USLEEP(10);
 }
 
-void icp_reentry_glitch_read(uint32_t delay1, uint32_t delay2, uint32_t delay_after_trigger_high, uint32_t delay_before_trigger_low, uint8_t * config_bytes) {
-	icp_reentry_glitch(delay1, delay2, delay_after_trigger_high, delay_before_trigger_low);
-	icp_read_flash(CFG_FLASH_ADDR, CFG_FLASH_LEN, config_bytes);
-}
 
 void icp_deinit(void)
 {
 	icp_exit();
-	pgm_deinit(0);
+	pgm_deinit(LEAVE_RESET_HIGH_AFTER_PROG);
+}
+
+void icp_pgm_deinit_only(uint8_t leave_reset_high){
+	pgm_deinit(leave_reset_high);
 }
 
 void icp_exit(void)

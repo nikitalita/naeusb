@@ -50,6 +50,10 @@
 #include "V2Protocol.h"
 #endif
 
+#ifdef CW_PROG_NU51_ICP
+#include "NuvoICPNewAE.h"
+#endif
+
 #define USART_WVREQ_INIT    0x0010
 #define USART_WVREQ_ENABLE  0x0011
 #define USART_WVREQ_DISABLE 0x0012

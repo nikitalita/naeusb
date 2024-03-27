@@ -8,15 +8,16 @@
 #include "ioport.h"
 #include "delay.h"
 
+#include "NuvoProgCommon.h" 
+
 int pgm_init(void)
 {
-	gpio_configure_pin(PIN_TARG_NRST_GPIO, (PIO_TYPE_PIO_OUTPUT_1 | PIO_DEFAULT));
-  gpio_set_pin_high(PIN_TARG_NRST_GPIO);
+  // TODO: Ensure that we are in AVR ISP Mode
+  // i.e. CW_IOROUTE_ADDR[5] is set to |= 0x01
+	gpio_configure_pin(PIN_TARG_NRST_GPIO, (PIO_TYPE_PIO_OUTPUT_0 | PIO_DEFAULT));
 	gpio_configure_pin(PIN_PDIDTX_GPIO, PIN_PDIDTX_OUT_FLAGS);
 	gpio_configure_pin(PIN_PDIDRX_GPIO, PIN_PDIDRX_FLAGS);
 	gpio_configure_pin(PIN_PDIC_GPIO, PIN_PDIC_OUT_FLAGS);
-  
-
 #ifdef PIN_PDIDWR_GPIO
 	gpio_set_pin_high(PIN_PDIDWR_GPIO);
 	gpio_set_pin_high(PIN_PDICWR_GPIO);
@@ -24,7 +25,7 @@ int pgm_init(void)
 
   gpio_set_pin_low(PIN_PDIDTX_GPIO);
   gpio_set_pin_low(PIN_PDIC_GPIO);
-
+  gpio_set_pin_low(PIN_TARG_NRST_GPIO);
   return 0;
 }
 
@@ -56,6 +57,11 @@ void pgm_set_clk(uint8_t val)
   gpio_set_pin(PIN_PDIC_GPIO, val);
 }
 
+void pgm_set_trigger(uint8_t val)
+{
+  /** TODO: does nothing for now until I can figure out how to trigger GPIO4 from here**/
+}
+
 void pgm_dat_dir(uint8_t state)
 {
   if(state){
@@ -67,11 +73,18 @@ void pgm_dat_dir(uint8_t state)
 
 void pgm_deinit(uint8_t leave_reset_high)
 {
- 	gpio_configure_pin(PIN_PDIC_GPIO, PIN_PDIC_IN_FLAGS);
+  /* Tristate all pins */
+	gpio_configure_pin(PIN_PDIC_GPIO, PIN_PDIC_IN_FLAGS);
 	gpio_configure_pin(PIN_PDIDRX_GPIO, PIN_PDIDRX_FLAGS);
 	gpio_configure_pin(PIN_PDIDTX_GPIO, PIN_PDIDTX_IN_FLAGS);
-  if (leave_reset_high)
+
+  if (leave_reset_high) {
+    gpio_configure_pin(PIN_TARG_NRST_GPIO, (PIO_TYPE_PIO_OUTPUT_1 | PIO_DEFAULT));
     gpio_set_pin_high(PIN_TARG_NRST_GPIO);
+  } else {
+    gpio_configure_pin(PIN_TARG_NRST_GPIO, (PIO_TYPE_PIO_INPUT | PIO_DEFAULT));
+  }
+  // gpio_configure_pin(PIN_TARG_NRST_GPIO, (PIO_TYPE_PIO_INPUT | PIO_DEFAULT));
 }
 
 uint32_t pgm_usleep(uint32_t usec)
