@@ -4,7 +4,6 @@
 
 bool NuvoICP_Protocol_Command(void);
 		#if defined(INCLUDE_FROM_NUVOICP_C)
-			void NuvoICP_DeinitPinsOnly(void);
 			void NuvoICP_Reentry(void);
 			void NuvoICP_Reentry_glitch(void);
             static void NuvoICP_EnterProgMode(void);

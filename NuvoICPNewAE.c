@@ -2,7 +2,7 @@
 #include "NuvoICPNewAE.h"
 #undef INCLUDE_FROM_NUVOICP_C
 #include "NuvoProgCommon.h"
-#include "NuvoICP.h"
+#include "n51_icp.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -42,12 +42,6 @@ bool NuvoICP_Protocol_Command(void)
 
   switch (status_payload[0])
   {
-#ifdef _DEBUG
-  case NUVO_TEST_CMD:
-    N51_Status = NUVO_ERR_OK;
-    test_command();
-    break;
-#endif
   case NUVO_CMD_WRITE_FLASH:
     NuvoICP_WriteMemory(NuvoICP_rambuf, &status_payload[STATUS_DATA_START]);
     nuvoicp_status_payload_size = 2;
@@ -67,10 +61,6 @@ bool NuvoICP_Protocol_Command(void)
 
   case NUVO_CMD_RESET:
     NuvoICP_LeaveProgMode();
-    break;
-
-  case NUVO_CMD_DEINIT_PGM_ONLY:
-    NuvoICP_DeinitPinsOnly();
     break;
 
   case NUVO_CMD_CONNECT:
@@ -135,12 +125,12 @@ bool NuvoICP_Protocol_Command(void)
     if (!_check_param_len(1)) {
       return false;
     }
-    icp_entry(udd_g_ctrlreq.payload[PDATA_START]);
+    N51ICP_enter_icp_mode(udd_g_ctrlreq.payload[PDATA_START]);
   } break;
 
   case NUVO_CMD_EXIT_ICP_MODE:
     N51_Status = NUVO_ERR_OK;
-    icp_exit();
+    N51ICP_exit_icp_mode();
     break;
   
   case NUVO_CMD_REENTER_ICP:
@@ -152,20 +142,25 @@ bool NuvoICP_Protocol_Command(void)
     NuvoICP_Reentry_glitch();
     break;
 
+  case NUVO_SET_PROG_TIME:
+    if (!_check_param_len(4)){
+      return false;
+    }
+    N51ICP_set_program_time(unpack_u32(udd_g_ctrlreq.payload, PDATA_START));
+    break;
+  
+  case NUVO_SET_PAGE_ERASE_TIME:
+    if (!_check_param_len(4)){
+      return false;
+    }
+    N51ICP_set_page_erase_time(unpack_u32(udd_g_ctrlreq.payload, PDATA_START));
+    break;
 
   default:
     break;
   }
 
   return false;
-}
-
-
-void NuvoICP_DeinitPinsOnly(void){
-  if (!_check_param_len(1)){
-    return;
-  }
-  icp_pgm_deinit_only(udd_g_ctrlreq.payload[PDATA_START]);
 }
 
 void NuvoICP_Reentry(void)
@@ -176,7 +171,7 @@ void NuvoICP_Reentry(void)
   uint32_t delay1 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START);
   uint32_t delay2 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 4);
   uint32_t delay3 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 8);
-  icp_reentry(delay1, delay2, delay3);
+  N51ICP_reentry(delay1, delay2, delay3);
 }
 
 void NuvoICP_Reentry_glitch(void)
@@ -189,12 +184,12 @@ void NuvoICP_Reentry_glitch(void)
   uint32_t delay3 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 8);
   uint32_t delay4 = unpack_u32(udd_g_ctrlreq.payload, PDATA_START + 12);
 
-  icp_reentry_glitch(delay1, delay2, delay3, delay4);
+  N51ICP_reentry_glitch(delay1, delay2, delay3, delay4);
 }
 
 void NuvoICP_EnterProgMode(void)
 {
-  uint8_t res = icp_init(true);
+  uint8_t res = N51ICP_init(true);
   if (res < 0) // negative error codes
   {
     N51_Status = res * -1;
@@ -209,13 +204,18 @@ void NuvoICP_EnterProgMode(void)
 
 void NuvoICP_LeaveProgMode(void)
 {
-  icp_deinit();
+  uint8_t leave_reset_high = 0; // default to high_z
+  // parameter is optional
+  if (udd_g_ctrlreq.req.wLength >= 1 + PDATA_START) {
+    leave_reset_high = udd_g_ctrlreq.payload[PDATA_START];
+  }
+  N51ICP_deinit(leave_reset_high);
   N51_Status = NUVO_ERR_OK;
 }
 
 void NuvoICP_Mass_Erase(void)
 {
-  icp_mass_erase();
+  N51ICP_mass_erase();
   N51_Status = NUVO_ERR_OK;
 }
 
@@ -240,7 +240,7 @@ bool NuvoICP_WriteMemory(uint8_t *buf, uint8_t *status_buf_data)
     Length = NUVOICP_BUF_SIZE;
   }
   uint16_t checksum = 0;
-  uint32_t addr_written = icp_write_flash(Address, Length, buf);
+  uint32_t addr_written = N51ICP_write_flash(Address, Length, buf);
   for (uint16_t i = 0; i < Length; i++)
   {
     checksum += buf[i];
@@ -266,7 +266,7 @@ void NuvoICP_Page_Erase(uint8_t * NuvoICP_rambuf){
                       (udd_g_ctrlreq.payload[PDATA_START+2] << 16) | 
                       (udd_g_ctrlreq.payload[PDATA_START+1] << 8) | 
                       (udd_g_ctrlreq.payload[PDATA_START]);
-  icp_page_erase(Address);
+  N51ICP_page_erase(Address);
 }
 
 /**
@@ -285,19 +285,19 @@ uint16_t NuvoICP_GetParam(uint8_t cmd, uint8_t *buf)
   switch (cmd)
   {
     case NUVO_CMD_GET_DEVICEID:
-      value = icp_read_device_id();
+      value = N51ICP_read_device_id();
       in_val = true;
       break;
     case NUVO_CMD_GET_UID:
-      icp_read_uid(buf);
+      N51ICP_read_uid(buf);
       val_length = 12;
       break;
     case NUVO_CMD_GET_CID:
-      value = icp_read_cid();
+      value = N51ICP_read_cid();
       in_val = true;
       break;
     case NUVO_CMD_GET_UCID:
-      icp_read_ucid(buf);
+      N51ICP_read_ucid(buf);
       val_length = 16;
       break;
   }
@@ -330,7 +330,7 @@ void NuvoICP_ReadMemory(uint8_t *buf)
     Length = NUVOICP_BUF_SIZE;
   }
 
-  uint32_t addr_read = icp_read_flash(Address, Length, buf);
+  uint32_t addr_read = N51ICP_read_flash(Address, Length, buf);
   if (addr_read != Address + Length){
     N51_Status = NUVO_ERR_READ_FAILED;
     return;

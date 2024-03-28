@@ -195,11 +195,6 @@ static void ctrl_progfpgaspi(void){
 			break;
 	}
 }
-#ifdef CW_PROG_NU51_ICP
-void ctrl_n76e003_icp_program_void(void) {
-        return NuvoICP_Protocol_Command();
-}
-#endif
 
 #ifdef CW_PROG_XMEGA
 void ctrl_xmega_program_void(void)
@@ -503,12 +498,6 @@ bool fpga_target_setup_in_received(void)
             return true;
             break;
 
-#ifdef CW_PROG_NU51_ICP
-        case REQ_NU51_ICP_PROGRAM:
-            return NuvoICP_Protocol_Command();
-            break;
-#endif
-
 #ifdef CW_PROG_XMEGA
         case REQ_XMEGA_PROGRAM:
             return XPROGProtocol_Command();
@@ -646,12 +635,6 @@ bool fpga_target_setup_out_received(void)
         case REQ_FPGA_PROGRAM:
             udd_g_ctrlreq.callback = ctrl_progfpga_bulk;
             return true;
-
-#ifdef CW_PROG_NU51_ICP
-        case REQ_NU51_ICP_PROGRAM:
-            udd_g_ctrlreq.callback = ctrl_n76e003_icp_program_void;
-            return true;
-#endif
 
             /* XMEGA Programming */
 #ifdef CW_PROG_XMEGA

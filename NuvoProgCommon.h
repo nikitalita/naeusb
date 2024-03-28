@@ -35,8 +35,10 @@
 #define NUVO_CMD_DEINIT_PGM_ONLY 0xeb
 // Write to flash
 #define NUVO_CMD_WRITE_FLASH 0xed
-// Test command
-#define NUVO_TEST_CMD 0xec
+// Set the programming time between bytes
+#define NUVO_SET_PROG_TIME 0xec
+// Set the erase time for a page
+#define NUVO_SET_PAGE_ERASE_TIME 0xee
 
 // ChipWhisperer specific
 #define NUVO_GET_RAMBUF 0xe4
